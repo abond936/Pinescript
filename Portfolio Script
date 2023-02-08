@@ -1,0 +1,1039 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © mabond936
+
+//@version=5
+indicator("My Portfolio Script", overlay = true)
+// This script is to calculate the results of a portfolio of symbols entered based on a set of criteria and rebalanced periodically.
+// The macro logic is to:
+//  1. Gather inputs of Asset Classes, Allocation Percentages, Rebalance frequency and the Symbols to include.
+//  2. Initialize calculation variables on Bar 0.
+//  3. Request symbol data
+//  4. On the Rebalance Frequency within the Date Range
+//      3a. Evaluate the inclusion and qualification per criteria (simply close > 200 ma).
+//      3b. Reallocate
+//      3c. Update totals
+//  5. At last bar, print table of results.
+// Each section below is 
+
+// INPUTS 
+//{ Asset Classes, Allocations and Rebalance frequency
+//***Need a way to check allocations sum to 100 and alert if not. Otherwise just have to manually verify.
+var Grp1                = "Asset Classes, Allocations & Rebalance Frequency"
+i_E1AllocationPct       = input.float(title = "EquityUSA Alloc", defval = 35, minval = 0, maxval = 100, step = 5, group = Grp1, inline = "E1", tooltip = "Assign allocation percentages to sum to 100." )
+i_E1MaxPctPerAsset      = input.float(title = "Max % in any Instrument", defval = 10, minval = 5, step = 1, maxval=25, group = Grp1, inline = "E1", tooltip = "Enter max percent allowable for any instrument." )
+i_E2AllocationPct       = input.float(title = "EquityInt Alloc", defval = 25, minval = 0, maxval = 100, step = 5,  group = Grp1, inline = "E2", tooltip = "Assign allocation percentages to sum to 100." )
+i_E2MaxPctPerAsset      = input.float(title = "Max % in any Instrument", defval = 10, minval = 5, step = 1, maxval=25, group = Grp1, inline = "E2", tooltip = "Enter max percent allowable for any instrument." )
+i_I1AllocationPct       = input.float(title = "Income Alloc", defval = 20, minval = 0, maxval = 100, step = 5, group = Grp1, inline = "I1", tooltip = "Assign allocation percentages to sum to 100." )
+i_I1MaxPctPerAsset      = input.float(title = "Max % in any Instrument", defval = 10, minval = 5, step = 1, maxval=25, group = Grp1, inline = "I1",tooltip = "Enter max percent allowable for any instrument." )
+i_D1AllocationPct       = input.float(title = "Diversifier Alloc", defval = 20, minval = 0, maxval = 100, step = 5, group = Grp1, inline = "D1", tooltip = "Assign allocation percentages to sum to 100." )
+i_D1MaxPctPerAsset      = input.float(title = "Max % in any Instrument", defval = 10, minval = 5, step = 1, maxval=25, group = Grp1, inline = "D1", tooltip = "Enter max percent allowable for any instrument." )
+i_RebalanceFreq         = input.timeframe(defval = "W", title = "Rebalance frequency: ", group = Grp1)
+//}
+//{ Asset Symbols
+//Equity USA symbols - E1
+var Grp1a             = "Equity USA Symbols"
+i_E1Sym01txt           = input.symbol(title = "Symbol 01", defval = "XLK",  inline = "E1Sym01", group = Grp1a, tooltip = "Select the instruments to include.")
+i_E1Sym02txt           = input.symbol(title = "Symbol 02", defval = "XLF",  inline = "E1Sym02", group = Grp1a, tooltip = "Select the instruments to include.")
+i_E1Sym03txt           = input.symbol(title = "Symbol 03", defval = "XLV",  inline = "E1Sym03", group = Grp1a, tooltip = "Select the instruments to include.")
+i_E1Sym04txt           = input.symbol(title = "Symbol 04", defval = "XLP",  inline = "E1Sym04", group = Grp1a, tooltip = "Select the instruments to include.")
+i_E1Sym05txt           = input.symbol(title = "Symbol 05", defval = "IYR",  inline = "E1Sym05", group = Grp1a, tooltip = "Select the instruments to include.")
+i_E1Sym06txt           = input.symbol(title = "Symbol 06", defval = "XLU",  inline = "E1Sym06", group = Grp1a, tooltip = "Select the instruments to include.")
+i_E1Sym07txt           = input.symbol(title = "Symbol 07", defval = "XLB",  inline = "E1Sym07", group = Grp1a, tooltip = "Select the instruments to include.")
+i_E1Sym08txt           = input.symbol(title = "Symbol 08", defval = "XLI",  inline = "E1Sym08", group = Grp1a, tooltip = "Select the instruments to include.")
+i_E1Sym09txt           = input.symbol(title = "Symbol 09", defval = "XLY",  inline = "E1Sym09", group = Grp1a, tooltip = "Select the instruments to include.")
+i_E1Sym10txt           = input.symbol(title = "Symbol 10", defval = "XLE",  inline = "E1Sym10", group = Grp1a, tooltip = "Select the instruments to include.")
+
+//Equity International symbols - E2
+var Grp1b             = "Equity International Symbols"
+i_E2Sym01txt           = input.symbol(title = "Symbol 01", defval = "EFA",  inline = "E2Sym01", group = Grp1b, tooltip = "Select the instruments to include.")
+i_E2Sym02txt           = input.symbol(title = "Symbol 02", defval = "EEM",  inline = "E2Sym02", group = Grp1b, tooltip = "Select the instruments to include.")
+i_E2Sym03txt           = input.symbol(title = "Symbol 03", defval = "",     inline = "E2Sym03", group = Grp1b, tooltip = "Select the instruments to include.")
+i_E2Sym04txt           = input.symbol(title = "Symbol 04", defval = "",     inline = "E2Sym04", group = Grp1b, tooltip = "Select the instruments to include.")
+i_E2Sym05txt           = input.symbol(title = "Symbol 05", defval = "",     inline = "E2Sym05", group = Grp1b, tooltip = "Select the instruments to include.")
+//Income symbols - I1
+var Grp1c             = "Income Symbols"
+i_I1Sym01txt           = input.symbol(title = "Symbol 01", defval = "IEF",  inline = "I1Sym01", group = Grp1c, tooltip = "Select the instruments to include.")
+i_I1Sym02txt           = input.symbol(title = "Symbol 02", defval = "LQD",  inline = "I1Sym02", group = Grp1c, tooltip = "Select the instruments to include.")
+i_I1Sym03txt           = input.symbol(title = "Symbol 03", defval = "MUB",  inline = "I1Sym03", group = Grp1c, tooltip = "Select the instruments to include.")
+i_I1Sym04txt           = input.symbol(title = "Symbol 04", defval = "MBB",  inline = "I1Sym04", group = Grp1c, tooltip = "Select the instruments to include.")
+i_I1Sym05txt           = input.symbol(title = "Symbol 05", defval = "SDIV", inline = "I1Sym05", group = Grp1c, tooltip = "Select the instruments to include.")
+
+//Diversification symbols - D1
+var Grp1d             = "Diversification Symbols"
+i_D1Sym01txt           = input.symbol(title = "Symbol 01", defval = "GLD",  inline = "D1Sym01", group = Grp1d, tooltip = "Select the instruments to include.")
+i_D1Sym02txt           = input.symbol(title = "Symbol 02", defval = "IYR",  inline = "D1Sym02", group = Grp1d, tooltip = "Select the instruments to include.")
+i_D1Sym03txt           = input.symbol(title = "Symbol 03", defval = "BTC",  inline = "D1Sym03", group = Grp1d, tooltip = "Select the instruments to include.")
+i_D1Sym04txt           = input.symbol(title = "Symbol 04", defval = "",     inline = "D1Sym04", group = Grp1d, tooltip = "Select the instruments to include.")
+i_D1Sym05txt           = input.symbol(title = "Symbol 04", defval = "",     inline = "D1Sym05", group = Grp1d, tooltip = "Select the instruments to include.")
+
+//}
+//{ Asset Symbols to include
+i_E1Sym01bool          = input.bool(title = '', defval = true, inline = "E1Sym01", group = Grp1a, tooltip = "Select the instruments to include." )
+i_E1Sym02bool          = input.bool(title = '', defval = true, inline = "E1Sym02", group = Grp1a, tooltip = "Select the instruments to include." )
+i_E1Sym03bool          = input.bool(title = '', defval = true, inline = "E1Sym03", group = Grp1a, tooltip = "Select the instruments to include." )
+i_E1Sym04bool          = input.bool(title = '', defval = true, inline = "E1Sym04", group = Grp1a, tooltip = "Select the instruments to include." )
+i_E1Sym05bool          = input.bool(title = '', defval = true, inline = "E1Sym05", group = Grp1a, tooltip = "Select the instruments to include." )
+i_E1Sym06bool          = input.bool(title = '', defval = true, inline = "E1Sym06", group = Grp1a, tooltip = "Select the instruments to include." )
+i_E1Sym07bool          = input.bool(title = '', defval = true, inline = "E1Sym07", group = Grp1a, tooltip = "Select the instruments to include." )
+i_E1Sym08bool          = input.bool(title = '', defval = true, inline = "E1Sym08", group = Grp1a, tooltip = "Select the instruments to include." )
+i_E1Sym09bool          = input.bool(title = '', defval = true, inline = "E1Sym09", group = Grp1a, tooltip = "Select the instruments to include." )
+i_E1Sym10bool          = input.bool(title = '', defval = true, inline = "E1Sym10", group = Grp1a, tooltip = "Select the instruments to include." )
+
+i_E2Sym01bool          = input.bool(title = '', defval = true, inline = "E2Sym01", group = Grp1b, tooltip = "Select the instruments to include." )
+i_E2Sym02bool          = input.bool(title = '', defval = true, inline = "E2Sym02", group = Grp1b, tooltip = "Select the instruments to include." )
+i_E2Sym03bool          = input.bool(title = '', defval = false, inline = "E2Sym03", group = Grp1b, tooltip = "Select the instruments to include." )
+i_E2Sym04bool          = input.bool(title = '', defval = false, inline = "E2Sym04", group = Grp1b, tooltip = "Select the instruments to include." )
+i_E2Sym05bool          = input.bool(title = '', defval = false, inline = "E2Sym05", group = Grp1b, tooltip = "Select the instruments to include." )
+
+i_I1Sym01bool          = input.bool(title = '', defval = true, inline = "I1Sym01", group = Grp1c, tooltip = "Select the instruments to include." )
+i_I1Sym02bool          = input.bool(title = '', defval = true, inline = "I1Sym02", group = Grp1c, tooltip = "Select the instruments to include." )
+i_I1Sym03bool          = input.bool(title = '', defval = true, inline = "I1Sym03", group = Grp1c, tooltip = "Select the instruments to include." )
+i_I1Sym04bool          = input.bool(title = '', defval = true, inline = "I1Sym04", group = Grp1c, tooltip = "Select the instruments to include." )
+i_I1Sym05bool          = input.bool(title = '', defval = true, inline = "I1Sym05", group = Grp1c, tooltip = "Select the instruments to include.")
+
+i_D1Sym01bool          = input.bool(title = '', defval = true, inline = "D1Sym01", group = Grp1d, tooltip = "Select the instruments to include." )
+i_D1Sym02bool          = input.bool(title = '', defval = true, inline = "D1Sym02", group = Grp1d, tooltip = "Select the instruments to include." )
+i_D1Sym03bool          = input.bool(title = '', defval = true, inline = "D1Sym03", group = Grp1d, tooltip = "Select the instruments to include." )
+i_D1Sym04bool          = input.bool(title = '', defval = false, inline = "D1Sym04", group = Grp1d, tooltip = "Select the instruments to include." )
+i_D1Sym05bool          = input.bool(title = '', defval = false, inline = "D1Sym05", group = Grp1d, tooltip = "Select the instruments to include." )
+//}
+//{ Backtest Period
+var Grp3              = "Backtest Period"
+datLmtDate            = input.bool(title = "Use Date Range?", defval = true,                     group = Grp3, tooltip = "Select to use Date Range.")
+datBegDate            = input.time(title = "Start Date",      defval = timestamp("1 Jan 2000"),  group = Grp3, tooltip = "Enter the date to begin test.")
+datEndDate            = input.time(title = "End Date",        defval = timestamp("1 Jan 2099"),  group = Grp3, tooltip = "Enter the date to end the test.")
+//}
+//{ Indicators & Criteria
+// Will flesh this out later with more indicators and criteria.
+// For the moment just using 200ma.
+// Moving Averages
+var Grp4              = "Moving Averages"
+maSeed1               = input.int(title = "SMA1", defval =   200, minval = 1, maxval=500,    group = Grp4, tooltip = "Enter integers for the sma's \nto be used as entries and exits." )
+maSeed2               = input.int(title = "SMA2", defval =   8, minval = 1, maxval=200,    group = Grp4, tooltip = "Enter integers for the sma's \nto be used as entries and exits." )
+maSeed3               = input.int(title = "SMA3", defval =  20, minval = 1, maxval=200,    group = Grp4, tooltip = "Enter integers for the sma's \nto be used as entries and exits." )
+//}
+//{ Money Management
+// May add other criteria.
+// For now, simply allocating equally within asset class 
+var Grp5              = "Money Management"
+i_InitialCapital      = input.float  (title = "Initial Capital", defval = 100000, minval = 10000, step = 10000, maxval=500000,   group = Grp5, tooltip = "Enter value for Initial Capital." )
+//}
+//{ Initialize Cumulative Quantity Variables
+var E1Sym01cumqty     = 0.0
+var E1Sym02cumqty     = 0.0
+var E1Sym03cumqty     = 0.0
+var E1Sym04cumqty     = 0.0
+var E1Sym05cumqty     = 0.0
+var E1Sym06cumqty     = 0.0
+var E1Sym07cumqty     = 0.0
+var E1Sym08cumqty     = 0.0
+var E1Sym09cumqty     = 0.0
+var E1Sym10cumqty     = 0.0
+var E2Sym01cumqty     = 0.0
+var E2Sym02cumqty     = 0.0
+var E2Sym03cumqty     = 0.0
+var E2Sym04cumqty     = 0.0
+var E2Sym05cumqty     = 0.0
+var I1Sym01cumqty     = 0.0
+var I1Sym02cumqty     = 0.0
+var I1Sym03cumqty     = 0.0
+var I1Sym04cumqty     = 0.0
+var I1Sym05cumqty     = 0.0
+var D1Sym01cumqty     = 0.0
+var D1Sym02cumqty     = 0.0
+var D1Sym03cumqty     = 0.0
+var D1Sym04cumqty     = 0.0
+var D1Sym05cumqty     = 0.0
+//}
+//{ Initialize Average Entry Price Variables
+var E1Sym01avgent     = 0.0
+var E1Sym02avgent     = 0.0
+var E1Sym03avgent     = 0.0
+var E1Sym04avgent     = 0.0
+var E1Sym05avgent     = 0.0
+var E1Sym06avgent     = 0.0
+var E1Sym07avgent     = 0.0
+var E1Sym08avgent     = 0.0
+var E1Sym09avgent     = 0.0
+var E1Sym10avgent     = 0.0
+var E2Sym01avgent     = 0.0
+var E2Sym02avgent     = 0.0
+var E2Sym03avgent     = 0.0
+var E2Sym04avgent     = 0.0
+var E2Sym05avgent     = 0.0
+var I1Sym01avgent     = 0.0
+var I1Sym02avgent     = 0.0
+var I1Sym03avgent     = 0.0
+var I1Sym04avgent     = 0.0
+var I1Sym05avgent     = 0.0
+var D1Sym01avgent     = 0.0
+var D1Sym02avgent     = 0.0
+var D1Sym03avgent     = 0.0
+var D1Sym04avgent     = 0.0
+var D1Sym05avgent     = 0.0
+//}
+//{ Initialize Total Investment Variables
+var E1Sym01totinv     = 0.0
+var E1Sym02totinv     = 0.0
+var E1Sym03totinv     = 0.0
+var E1Sym04totinv     = 0.0
+var E1Sym05totinv     = 0.0
+var E1Sym06totinv     = 0.0
+var E1Sym07totinv     = 0.0
+var E1Sym08totinv     = 0.0
+var E1Sym09totinv     = 0.0
+var E1Sym10totinv     = 0.0
+var E2Sym01totinv     = 0.0
+var E2Sym02totinv     = 0.0
+var E2Sym03totinv     = 0.0
+var E2Sym04totinv     = 0.0
+var E2Sym05totinv     = 0.0
+var I1Sym01totinv     = 0.0
+var I1Sym02totinv     = 0.0
+var I1Sym03totinv     = 0.0
+var I1Sym04totinv     = 0.0
+var I1Sym05totinv     = 0.0
+var D1Sym01totinv     = 0.0
+var D1Sym02totinv     = 0.0
+var D1Sym03totinv     = 0.0
+var D1Sym04totinv     = 0.0
+var D1Sym05totinv     = 0.0
+//}
+//{ Initialize Total Proceeds Variables
+var E1Sym01totpro     = 0.0
+var E1Sym02totpro     = 0.0
+var E1Sym03totpro     = 0.0
+var E1Sym04totpro     = 0.0
+var E1Sym05totpro     = 0.0
+var E1Sym06totpro     = 0.0
+var E1Sym07totpro     = 0.0
+var E1Sym08totpro     = 0.0
+var E1Sym09totpro     = 0.0
+var E1Sym10totpro     = 0.0
+var E2Sym01totpro     = 0.0
+var E2Sym02totpro     = 0.0
+var E2Sym03totpro     = 0.0
+var E2Sym04totpro     = 0.0
+var E2Sym05totpro     = 0.0
+var I1Sym01totpro     = 0.0
+var I1Sym02totpro     = 0.0
+var I1Sym03totpro     = 0.0
+var I1Sym04totpro     = 0.0
+var I1Sym05totpro     = 0.0
+var D1Sym01totpro     = 0.0
+var D1Sym02totpro     = 0.0
+var D1Sym03totpro     = 0.0
+var D1Sym04totpro     = 0.0
+var D1Sym05totpro     = 0.0
+//}
+//{ Initialize Total Cost Variables
+var E1Sym01totcst     = 0.0
+var E1Sym02totcst     = 0.0
+var E1Sym03totcst     = 0.0
+var E1Sym04totcst     = 0.0
+var E1Sym05totcst     = 0.0
+var E1Sym06totcst     = 0.0
+var E1Sym07totcst     = 0.0
+var E1Sym08totcst     = 0.0
+var E1Sym09totcst     = 0.0
+var E1Sym10totcst     = 0.0
+var E2Sym01totcst     = 0.0
+var E2Sym02totcst     = 0.0
+var E2Sym03totcst     = 0.0
+var E2Sym04totcst     = 0.0
+var E2Sym05totcst     = 0.0
+var I1Sym01totcst     = 0.0
+var I1Sym02totcst     = 0.0
+var I1Sym03totcst     = 0.0
+var I1Sym04totcst     = 0.0
+var I1Sym05totcst     = 0.0
+var D1Sym01totcst     = 0.0
+var D1Sym02totcst     = 0.0
+var D1Sym03totcst     = 0.0
+var D1Sym04totcst     = 0.0
+var D1Sym05totcst     = 0.0
+//}
+//{ Initialize Total Realized Variables
+var E1Sym01totrea     = 0.0
+var E1Sym02totrea     = 0.0
+var E1Sym03totrea     = 0.0
+var E1Sym04totrea     = 0.0
+var E1Sym05totrea     = 0.0
+var E1Sym06totrea     = 0.0
+var E1Sym07totrea     = 0.0
+var E1Sym08totrea     = 0.0
+var E1Sym09totrea     = 0.0
+var E1Sym10totrea     = 0.0
+var E1Sym11totrea     = 0.0
+var E2Sym01totrea     = 0.0
+var E2Sym02totrea     = 0.0
+var E2Sym03totrea     = 0.0
+var E2Sym04totrea     = 0.0
+var E2Sym05totrea     = 0.0
+var I1Sym01totrea     = 0.0
+var I1Sym02totrea     = 0.0
+var I1Sym03totrea     = 0.0
+var I1Sym04totrea     = 0.0
+var I1Sym05totrea     = 0.0
+var D1Sym01totrea     = 0.0
+var D1Sym02totrea     = 0.0
+var D1Sym03totrea     = 0.0
+var D1Sym04totrea     = 0.0
+var D1Sym05totrea     = 0.0
+//}
+//{ Initialize Total Unrealized variables
+var E1Sym01totunr     = 0.0
+var E1Sym02totunr     = 0.0
+var E1Sym03totunr     = 0.0
+var E1Sym04totunr     = 0.0
+var E1Sym05totunr     = 0.0
+var E1Sym06totunr     = 0.0
+var E1Sym07totunr     = 0.0
+var E1Sym08totunr     = 0.0
+var E1Sym09totunr     = 0.0
+var E1Sym10totunr     = 0.0
+var E2Sym01totunr     = 0.0
+var E2Sym02totunr     = 0.0
+var E2Sym03totunr     = 0.0
+var E2Sym04totunr     = 0.0
+var E2Sym05totunr     = 0.0
+var I1Sym01totunr     = 0.0
+var I1Sym02totunr     = 0.0
+var I1Sym03totunr     = 0.0
+var I1Sym04totunr     = 0.0
+var I1Sym05totunr     = 0.0
+var D1Sym01totunr     = 0.0
+var D1Sym02totunr     = 0.0
+var D1Sym03totunr     = 0.0
+var D1Sym04totunr     = 0.0
+var D1Sym05totunr     = 0.0
+//}     
+//{ Initialize Summary Variables      
+var Cash               = 0.0
+var TotalInvested      = 0.0
+var TotalProceeds      = 0.0
+var TotalCost          = 0.0
+var TotalRealized      = 0.0
+var TotalHoldings      = 0.0
+var TotalUnRealized    = 0.0
+var TotalEquity        = 0.0
+var TotalReturn        = 0.0
+//}
+//{ Establish session tickers.
+// Saw this somewhere. Trying to set ticker session to session of the chart.
+// var E1ext01                 = ticker.modify(i_E1Sym01txt, session = syminfo.session)
+// var E1ext02                 = ticker.modify(i_E1Sym02txt, session = syminfo.session)
+// var E1ext03                 = ticker.modify(i_E1Sym03txt, session = syminfo.session)
+// var E1ext04                 = ticker.modify(i_E1Sym04txt, session = syminfo.session)
+// var E1ext05                 = ticker.modify(i_E1Sym05txt, session = syminfo.session)
+// var E1ext06                 = ticker.modify(i_E1Sym06txt, session = syminfo.session)
+// var E1ext07                 = ticker.modify(i_E1Sym07txt, session = syminfo.session)
+// var E1ext08                 = ticker.modify(i_E1Sym08txt, session = syminfo.session)
+// var E1ext09                 = ticker.modify(i_E1Sym09txt, session = syminfo.session)
+// var E1ext10                 = ticker.modify(i_E1Sym10txt, session = syminfo.session)
+
+// var E2ext01                 = ticker.modify(i_E2Sym01txt, session = syminfo.session)
+// var E2ext02                 = ticker.modify(i_E2Sym02txt, session = syminfo.session)
+// var E2ext03                 = ticker.modify(i_E2Sym03txt, session = syminfo.session)
+// var E2ext04                 = ticker.modify(i_E2Sym04txt, session = syminfo.session)
+// var E2ext05                 = ticker.modify(i_E2Sym05txt, session = syminfo.session)
+
+// var I1ext01                 = ticker.modify(i_I1Sym01txt, session = syminfo.session)
+// var I1ext02                 = ticker.modify(i_I1Sym02txt, session = syminfo.session)
+// var I1ext03                 = ticker.modify(i_I1Sym03txt, session = syminfo.session)
+// var I1ext04                 = ticker.modify(i_I1Sym04txt, session = syminfo.session)
+// var I1ext05                 = ticker.modify(i_I1Sym05txt, session = syminfo.session)
+
+// var D1ext01                 = ticker.modify(i_D1Sym01txt, session = syminfo.session)
+// var D1ext02                 = ticker.modify(i_D1Sym02txt, session = syminfo.session)
+// var D1ext03                 = ticker.modify(i_D1Sym03txt, session = syminfo.session)
+// var D1ext04                 = ticker.modify(i_D1Sym04txt, session = syminfo.session)
+// var D1ext05                 = ticker.modify(i_D1Sym05txt, session = syminfo.session)
+//}
+//{ Request ticker data.
+//  Open, Close and 3 ma's.
+[E1Sym01o, E1Sym01c, E1Sym01ma1, E1Sym01ma2, E1Sym01ma3]  = request.security(i_E1Sym01txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E1Sym02o, E1Sym02c, E1Sym02ma1, E1Sym02ma2, E1Sym02ma3]  = request.security(i_E1Sym02txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E1Sym03o, E1Sym03c, E1Sym03ma1, E1Sym03ma2, E1Sym03ma3]  = request.security(i_E1Sym03txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E1Sym04o, E1Sym04c, E1Sym04ma1, E1Sym04ma2, E1Sym04ma3]  = request.security(i_E1Sym04txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E1Sym05o, E1Sym05c, E1Sym05ma1, E1Sym05ma2, E1Sym05ma3]  = request.security(i_E1Sym05txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E1Sym06o, E1Sym06c, E1Sym06ma1, E1Sym06ma2, E1Sym06ma3]  = request.security(i_E1Sym06txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E1Sym07o, E1Sym07c, E1Sym07ma1, E1Sym07ma2, E1Sym07ma3]  = request.security(i_E1Sym07txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E1Sym08o, E1Sym08c, E1Sym08ma1, E1Sym08ma2, E1Sym08ma3]  = request.security(i_E1Sym08txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E1Sym09o, E1Sym09c, E1Sym09ma1, E1Sym09ma2, E1Sym09ma3]  = request.security(i_E1Sym09txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E1Sym10o, E1Sym10c, E1Sym10ma1, E1Sym10ma2, E1Sym10ma3]  = request.security(i_E1Sym10txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+
+[E2Sym01o, E2Sym01c, E2Sym01ma1, E2Sym01ma2, E2Sym01ma3]  = request.security(i_E2Sym01txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E2Sym02o, E2Sym02c, E2Sym02ma1, E2Sym02ma2, E2Sym02ma3]  = request.security(i_E2Sym02txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E2Sym03o, E2Sym03c, E2Sym03ma1, E2Sym03ma2, E2Sym03ma3]  = request.security(i_E2Sym03txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E2Sym04o, E2Sym04c, E2Sym04ma1, E2Sym04ma2, E2Sym04ma3]  = request.security(i_E2Sym04txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[E2Sym05o, E2Sym05c, E2Sym05ma1, E2Sym05ma2, E2Sym05ma3]  = request.security(i_E2Sym05txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+
+[I1Sym01o, I1Sym01c, I1Sym01ma1, I1Sym01ma2, I1Sym01ma3]  = request.security(i_I1Sym01txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[I1Sym02o, I1Sym02c, I1Sym02ma1, I1Sym02ma2, I1Sym02ma3]  = request.security(i_I1Sym02txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[I1Sym03o, I1Sym03c, I1Sym03ma1, I1Sym03ma2, I1Sym03ma3]  = request.security(i_I1Sym03txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[I1Sym04o, I1Sym04c, I1Sym04ma1, I1Sym04ma2, I1Sym04ma3]  = request.security(i_I1Sym04txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[I1Sym05o, I1Sym05c, I1Sym05ma1, I1Sym05ma2, I1Sym05ma3]  = request.security(i_I1Sym05txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+
+[D1Sym01o, D1Sym01c, D1Sym01ma1, D1Sym01ma2, D1Sym01ma3]  = request.security(i_D1Sym01txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[D1Sym02o, D1Sym02c, D1Sym02ma1, D1Sym02ma2, D1Sym02ma3]  = request.security(i_D1Sym02txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[D1Sym03o, D1Sym03c, D1Sym03ma1, D1Sym03ma2, D1Sym03ma3]  = request.security(i_D1Sym03txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[D1Sym04o, D1Sym04c, D1Sym04ma1, D1Sym04ma2, D1Sym04ma3]  = request.security(i_D1Sym04txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+[D1Sym05o, D1Sym05c, D1Sym05ma1, D1Sym05ma2, D1Sym05ma3]  = request.security(i_D1Sym05txt, timeframe.period, [open, close, ta.sma(close, maSeed1), ta.sma(close, maSeed2), ta.sma(close, maSeed3)])
+//}
+//{ Assess symbol inclusion and qualification.
+//  If selected to be included, if close[1] > ma1[1], else (if not included) false
+E1Sym01qlf =  i_E1Sym01bool ? E1Sym01c[1] > E1Sym01ma1[1] : false 
+E1Sym02qlf =  i_E1Sym02bool ? E1Sym02c[1] > E1Sym02ma1[1] : false
+E1Sym03qlf =  i_E1Sym03bool ? E1Sym03c[1] > E1Sym03ma1[1] : false
+E1Sym04qlf =  i_E1Sym04bool ? E1Sym04c[1] > E1Sym04ma1[1] : false
+E1Sym05qlf =  i_E1Sym05bool ? E1Sym05c[1] > E1Sym05ma1[1] : false
+E1Sym06qlf =  i_E1Sym06bool ? E1Sym06c[1] > E1Sym06ma1[1] : false
+E1Sym07qlf =  i_E1Sym07bool ? E1Sym07c[1] > E1Sym07ma1[1] : false
+E1Sym08qlf =  i_E1Sym08bool ? E1Sym08c[1] > E1Sym08ma1[1] : false
+E1Sym09qlf =  i_E1Sym09bool ? E1Sym09c[1] > E1Sym09ma1[1] : false
+E1Sym10qlf =  i_E1Sym10bool ? E1Sym10c[1] > E1Sym10ma1[1] : false
+E2Sym01qlf =  i_E2Sym01bool ? E2Sym01c[1] > E2Sym01ma1[1] : false
+E2Sym02qlf =  i_E2Sym02bool ? E2Sym02c[1] > E2Sym02ma1[1] : false
+E2Sym03qlf =  i_E2Sym03bool ? E2Sym03c[1] > E2Sym03ma1[1] : false
+E2Sym04qlf =  i_E2Sym04bool ? E2Sym04c[1] > E2Sym04ma1[1] : false
+E2Sym05qlf =  i_E2Sym05bool ? E2Sym05c[1] > E2Sym05ma1[1] : false
+I1Sym01qlf =  i_I1Sym01bool ? I1Sym01c[1] > I1Sym01ma1[1] : false
+I1Sym02qlf =  i_I1Sym02bool ? I1Sym02c[1] > I1Sym02ma1[1] : false
+I1Sym03qlf =  i_I1Sym03bool ? I1Sym03c[1] > I1Sym03ma1[1] : false
+I1Sym04qlf =  i_I1Sym04bool ? I1Sym04c[1] > I1Sym04ma1[1] : false
+I1Sym05qlf =  i_I1Sym05bool ? I1Sym05c[1] > I1Sym05ma1[1] : false
+D1Sym01qlf =  i_D1Sym01bool ? D1Sym01c[1] > D1Sym01ma1[1] : false
+D1Sym02qlf =  i_D1Sym02bool ? D1Sym02c[1] > D1Sym02ma1[1] : false
+D1Sym03qlf =  i_D1Sym03bool ? D1Sym03c[1] > D1Sym03ma1[1] : false
+D1Sym04qlf =  i_D1Sym04bool ? D1Sym04c[1] > D1Sym04ma1[1] : false
+D1Sym05qlf =  i_D1Sym05bool ? D1Sym05c[1] > D1Sym05ma1[1] : false
+    //}
+f_bool(_bool) => _bool ? 1 : 0
+    //Convert bool to int for counting
+
+//{ Initial Allocation and Rebalance routine. 
+//Want to be able to initially allocate then rebalance based on input timeframe of 1W, 2W, 3W, 1M, 2M, 3M, etc.
+//Don't know how to use the input variable i_RebalanceFreq to do that, so just hardcoding to Friday for now.
+//if datLmtDate and (time >= datBegDate) and (time <= datEndDate) and 
+if ta.change(weekofyear(time))
+//} =======================================================================================
+    //{ Count qualified symbols in each class
+    E1Qualified = 
+                      f_bool(E1Sym01qlf) +
+                      f_bool(E1Sym02qlf) +
+                      f_bool(E1Sym03qlf) +
+                      f_bool(E1Sym04qlf) +
+                      f_bool(E1Sym05qlf) +
+                      f_bool(E1Sym06qlf) +
+                      f_bool(E1Sym07qlf) +
+                      f_bool(E1Sym08qlf) +
+                      f_bool(E1Sym09qlf) +
+                      f_bool(E1Sym10qlf) 
+    
+    E2Qualified = 
+                      f_bool(E2Sym01qlf) +
+                      f_bool(E2Sym02qlf) +
+                      f_bool(E2Sym03qlf) +
+                      f_bool(E2Sym04qlf) +
+                      f_bool(E2Sym05qlf) 
+
+    I1Qualified    = 
+                      f_bool(I1Sym01qlf) +
+                      f_bool(I1Sym02qlf) +
+                      f_bool(I1Sym03qlf) +
+                      f_bool(I1Sym04qlf) +
+                      f_bool(I1Sym05qlf) 
+
+    D1Qualified   = 
+                      f_bool(D1Sym01qlf) +
+                      f_bool(D1Sym02qlf) +
+                      f_bool(D1Sym03qlf) +
+                      f_bool(D1Sym04qlf) +
+                      f_bool(D1Sym05qlf) 
+    //}
+    //{ Calculate total equity to be allocated.
+    // Cash plus cumulative quantity times prior period close.
+    // First pass, this will be Cash equal to Initial Balance plus zero quantities * price, resulting in cash only
+    //Subsequent passes, this will be Cash net of Investments and Proceeds (calculated later), plus cumqty * prior close.
+    // Any symbol not selected to be included (in inputs) will have zero cumlative qty, so just sum them all.
+    TotalEquity :=   Cash +
+                     E1Sym01cumqty * E1Sym01c[1] +
+                     E1Sym02cumqty * E1Sym02c[1] +
+                     E1Sym03cumqty * E1Sym03c[1] +
+                     E1Sym04cumqty * E1Sym04c[1] +
+                     E1Sym05cumqty * E1Sym05c[1] +
+                     E1Sym06cumqty * E1Sym06c[1] +
+                     E1Sym07cumqty * E1Sym07c[1] +
+                     E1Sym08cumqty * E1Sym08c[1] +
+                     E1Sym09cumqty * E1Sym09c[1] +
+                     E1Sym10cumqty * E1Sym10c[1] +
+                     E2Sym01cumqty * E2Sym01c[1] +
+                     E2Sym02cumqty * E2Sym02c[1] +
+                     E2Sym03cumqty * E2Sym03c[1] +
+                     E2Sym04cumqty * E2Sym04c[1] +
+                     E2Sym05cumqty * E2Sym05c[1] +
+                     I1Sym01cumqty * I1Sym01c[1] +
+                     I1Sym02cumqty * I1Sym02c[1] +
+                     I1Sym03cumqty * I1Sym03c[1] +
+                     I1Sym04cumqty * I1Sym04c[1] +
+                     I1Sym05cumqty * I1Sym05c[1] +
+                     D1Sym01cumqty * D1Sym01c[1] +
+                     D1Sym02cumqty * D1Sym02c[1] +
+                     D1Sym03cumqty * D1Sym03c[1] +
+                     D1Sym04cumqty * D1Sym04c[1] +
+                     D1Sym05cumqty * D1Sym05c[1] 
+    //}
+    //{ Calculate allocation per asset class and instrument. 
+    //  Limit allocation to max percent per instrument by dividing by rounded(1 / max percent.)
+    E1AllocPerInstr    = (TotalEquity * i_E1AllocationPct) / math.max(E1Qualified, math.floor(1 / i_E1MaxPctPerAsset))
+    E2AllocPerInstr    = (TotalEquity * i_E2AllocationPct) / math.max(E2Qualified, math.floor(1 / i_E2MaxPctPerAsset))
+    I1AllocPerInstr    = (TotalEquity * i_I1AllocationPct) / math.max(I1Qualified, math.floor(1 / i_I1MaxPctPerAsset))
+    D1AllocPerInstr    = (TotalEquity * i_D1AllocationPct) / math.max(D1Qualified, math.floor(1 / i_D1MaxPctPerAsset))
+    //}
+    //{ Update Transacted Quantities to temp variables.
+    // If symbol qualified, buy or sell the difference, else (if not qualified) sell any existing.
+    E1Sym01trnqty      = E1Sym01qlf ? math.round(E1AllocPerInstr / E1Sym01o - E1Sym01cumqty) : - E1Sym01cumqty 
+    E1Sym02trnqty      = E1Sym02qlf ? math.round(E1AllocPerInstr / E1Sym02o - E1Sym02cumqty) : - E1Sym02cumqty 
+    E1Sym03trnqty      = E1Sym03qlf ? math.round(E1AllocPerInstr / E1Sym03o - E1Sym03cumqty) : - E1Sym03cumqty 
+    E1Sym04trnqty      = E1Sym04qlf ? math.round(E1AllocPerInstr / E1Sym04o - E1Sym04cumqty) : - E1Sym04cumqty 
+    E1Sym05trnqty      = E1Sym05qlf ? math.round(E1AllocPerInstr / E1Sym05o - E1Sym05cumqty) : - E1Sym05cumqty 
+    E1Sym06trnqty      = E1Sym06qlf ? math.round(E1AllocPerInstr / E1Sym06o - E1Sym06cumqty) : - E1Sym06cumqty 
+    E1Sym07trnqty      = E1Sym07qlf ? math.round(E1AllocPerInstr / E1Sym07o - E1Sym07cumqty) : - E1Sym07cumqty 
+    E1Sym08trnqty      = E1Sym08qlf ? math.round(E1AllocPerInstr / E1Sym08o - E1Sym08cumqty) : - E1Sym08cumqty 
+    E1Sym09trnqty      = E1Sym09qlf ? math.round(E1AllocPerInstr / E1Sym09o - E1Sym09cumqty) : - E1Sym09cumqty 
+    E1Sym10trnqty      = E1Sym10qlf ? math.round(E1AllocPerInstr / E1Sym10o - E1Sym10cumqty) : - E1Sym10cumqty 
+    E2Sym01trnqty      = E2Sym01qlf ? math.round(E2AllocPerInstr / E2Sym01o - E2Sym01cumqty) : - E2Sym01cumqty 
+    E2Sym02trnqty      = E2Sym02qlf ? math.round(E2AllocPerInstr / E2Sym02o - E2Sym02cumqty) : - E2Sym02cumqty 
+    E2Sym03trnqty      = E2Sym03qlf ? math.round(E2AllocPerInstr / E2Sym03o - E2Sym03cumqty) : - E2Sym03cumqty 
+    E2Sym04trnqty      = E2Sym04qlf ? math.round(E2AllocPerInstr / E2Sym04o - E2Sym04cumqty) : - E2Sym04cumqty 
+    E2Sym05trnqty      = E2Sym05qlf ? math.round(E2AllocPerInstr / E2Sym05o - E2Sym05cumqty) : - E2Sym05cumqty 
+    I1Sym01trnqty      = I1Sym01qlf ? math.round(I1AllocPerInstr / I1Sym01o - I1Sym01cumqty) : - I1Sym01cumqty 
+    I1Sym02trnqty      = I1Sym02qlf ? math.round(I1AllocPerInstr / I1Sym02o - I1Sym02cumqty) : - I1Sym02cumqty 
+    I1Sym03trnqty      = I1Sym03qlf ? math.round(I1AllocPerInstr / I1Sym03o - I1Sym03cumqty) : - I1Sym03cumqty 
+    I1Sym04trnqty      = I1Sym04qlf ? math.round(I1AllocPerInstr / I1Sym04o - I1Sym04cumqty) : - I1Sym04cumqty 
+    I1Sym05trnqty      = I1Sym05qlf ? math.round(I1AllocPerInstr / I1Sym05o - I1Sym05cumqty) : - I1Sym05cumqty 
+    D1Sym01trnqty      = D1Sym01qlf ? math.round(D1AllocPerInstr / D1Sym01o - D1Sym01cumqty) : - D1Sym01cumqty 
+    D1Sym02trnqty      = D1Sym02qlf ? math.round(D1AllocPerInstr / D1Sym02o - D1Sym02cumqty) : - D1Sym02cumqty 
+    D1Sym03trnqty      = D1Sym03qlf ? math.round(D1AllocPerInstr / D1Sym03o - D1Sym03cumqty) : - D1Sym03cumqty 
+    D1Sym04trnqty      = D1Sym04qlf ? math.round(D1AllocPerInstr / D1Sym04o - D1Sym04cumqty) : - D1Sym04cumqty 
+    D1Sym05trnqty      = D1Sym05qlf ? math.round(D1AllocPerInstr / D1Sym05o - D1Sym05cumqty) : - D1Sym05cumqty 
+    //}
+    //{ Update Cumulative Quantities to perm variables.
+    // Prior cumulative + transacted quantity (positive or negative)
+    E1Sym01cumqty     :=   E1Sym01cumqty + E1Sym01trnqty
+    E1Sym02cumqty     :=   E1Sym02cumqty + E1Sym02trnqty
+    E1Sym03cumqty     :=   E1Sym03cumqty + E1Sym03trnqty
+    E1Sym04cumqty     :=   E1Sym04cumqty + E1Sym04trnqty
+    E1Sym05cumqty     :=   E1Sym05cumqty + E1Sym05trnqty
+    E1Sym06cumqty     :=   E1Sym06cumqty + E1Sym06trnqty
+    E1Sym07cumqty     :=   E1Sym07cumqty + E1Sym07trnqty
+    E1Sym08cumqty     :=   E1Sym08cumqty + E1Sym08trnqty
+    E1Sym09cumqty     :=   E1Sym09cumqty + E1Sym09trnqty
+    E1Sym10cumqty     :=   E1Sym10cumqty + E1Sym10trnqty
+    E2Sym01cumqty     :=   E2Sym01cumqty + E2Sym01trnqty
+    E2Sym02cumqty     :=   E2Sym02cumqty + E2Sym02trnqty
+    E2Sym03cumqty     :=   E2Sym03cumqty + E2Sym03trnqty
+    E2Sym04cumqty     :=   E2Sym04cumqty + E2Sym04trnqty
+    E2Sym05cumqty     :=   E2Sym05cumqty + E2Sym05trnqty
+    I1Sym01cumqty     :=   I1Sym01cumqty + I1Sym01trnqty
+    I1Sym02cumqty     :=   I1Sym02cumqty + I1Sym02trnqty
+    I1Sym03cumqty     :=   I1Sym03cumqty + I1Sym03trnqty
+    I1Sym04cumqty     :=   I1Sym04cumqty + I1Sym04trnqty
+    I1Sym05cumqty     :=   I1Sym05cumqty + I1Sym05trnqty
+    D1Sym01cumqty     :=   D1Sym01cumqty + D1Sym01trnqty
+    D1Sym02cumqty     :=   D1Sym02cumqty + D1Sym02trnqty
+    D1Sym03cumqty     :=   D1Sym03cumqty + D1Sym03trnqty
+    D1Sym04cumqty     :=   D1Sym04cumqty + D1Sym04trnqty
+    D1Sym05cumqty     :=   D1Sym05cumqty + D1Sym05trnqty
+    //}
+    //{ Update Total Invested to perm variables. 
+    // Total Invested plus (if transacted quantity positive), (transacted quantity * open). Else (if negative or zero), (minus transacted quantity * average entry price [prior to coming update of avg price.[]).
+    E1Sym01totinv     :=   E1Sym01totinv + E1Sym01trnqty > 0 ? E1Sym01trnqty * E1Sym01o : E1Sym01trnqty * E1Sym01avgent
+    E1Sym02totinv     :=   E1Sym02totinv + E1Sym02trnqty > 0 ? E1Sym02trnqty * E1Sym02o : E1Sym02trnqty * E1Sym02avgent
+    E1Sym03totinv     :=   E1Sym03totinv + E1Sym03trnqty > 0 ? E1Sym03trnqty * E1Sym03o : E1Sym03trnqty * E1Sym03avgent
+    E1Sym04totinv     :=   E1Sym04totinv + E1Sym04trnqty > 0 ? E1Sym04trnqty * E1Sym04o : E1Sym04trnqty * E1Sym04avgent
+    E1Sym05totinv     :=   E1Sym05totinv + E1Sym05trnqty > 0 ? E1Sym05trnqty * E1Sym05o : E1Sym05trnqty * E1Sym05avgent
+    E1Sym06totinv     :=   E1Sym06totinv + E1Sym06trnqty > 0 ? E1Sym06trnqty * E1Sym06o : E1Sym06trnqty * E1Sym06avgent
+    E1Sym07totinv     :=   E1Sym07totinv + E1Sym07trnqty > 0 ? E1Sym07trnqty * E1Sym07o : E1Sym07trnqty * E1Sym07avgent
+    E1Sym08totinv     :=   E1Sym08totinv + E1Sym08trnqty > 0 ? E1Sym08trnqty * E1Sym08o : E1Sym08trnqty * E1Sym08avgent
+    E1Sym09totinv     :=   E1Sym09totinv + E1Sym09trnqty > 0 ? E1Sym09trnqty * E1Sym09o : E1Sym09trnqty * E1Sym09avgent
+    E1Sym10totinv     :=   E1Sym10totinv + E1Sym10trnqty > 0 ? E1Sym10trnqty * E1Sym10o : E1Sym10trnqty * E1Sym10avgent
+    E2Sym01totinv     :=   E2Sym01totinv + E2Sym01trnqty > 0 ? E2Sym01trnqty * E2Sym01o : E2Sym01trnqty * E2Sym01avgent
+    E2Sym02totinv     :=   E2Sym02totinv + E2Sym02trnqty > 0 ? E2Sym02trnqty * E2Sym02o : E2Sym02trnqty * E2Sym02avgent
+    E2Sym03totinv     :=   E2Sym03totinv + E2Sym03trnqty > 0 ? E2Sym03trnqty * E2Sym03o : E2Sym03trnqty * E2Sym03avgent
+    E2Sym04totinv     :=   E2Sym04totinv + E2Sym04trnqty > 0 ? E2Sym04trnqty * E2Sym04o : E2Sym04trnqty * E2Sym04avgent
+    E2Sym05totinv     :=   E2Sym05totinv + E2Sym05trnqty > 0 ? E2Sym05trnqty * E2Sym05o : E2Sym05trnqty * E2Sym05avgent
+    I1Sym01totinv     :=   I1Sym01totinv + I1Sym01trnqty > 0 ? I1Sym01trnqty * I1Sym01o : I1Sym01trnqty * I1Sym01avgent
+    I1Sym02totinv     :=   I1Sym02totinv + I1Sym02trnqty > 0 ? I1Sym02trnqty * I1Sym02o : I1Sym02trnqty * I1Sym02avgent
+    I1Sym03totinv     :=   I1Sym03totinv + I1Sym03trnqty > 0 ? I1Sym03trnqty * I1Sym03o : I1Sym03trnqty * I1Sym03avgent
+    I1Sym04totinv     :=   I1Sym04totinv + I1Sym04trnqty > 0 ? I1Sym04trnqty * I1Sym04o : I1Sym04trnqty * I1Sym04avgent
+    I1Sym05totinv     :=   I1Sym05totinv + I1Sym05trnqty > 0 ? I1Sym05trnqty * I1Sym05o : I1Sym05trnqty * I1Sym05avgent
+    D1Sym01totinv     :=   D1Sym01totinv + D1Sym01trnqty > 0 ? D1Sym01trnqty * D1Sym01o : D1Sym01trnqty * D1Sym01avgent
+    D1Sym02totinv     :=   D1Sym02totinv + D1Sym02trnqty > 0 ? D1Sym02trnqty * D1Sym02o : D1Sym02trnqty * D1Sym02avgent
+    D1Sym03totinv     :=   D1Sym03totinv + D1Sym03trnqty > 0 ? D1Sym03trnqty * D1Sym03o : D1Sym03trnqty * D1Sym03avgent
+    D1Sym04totinv     :=   D1Sym04totinv + D1Sym04trnqty > 0 ? D1Sym04trnqty * D1Sym04o : D1Sym04trnqty * D1Sym04avgent
+    D1Sym05totinv     :=   D1Sym05totinv + D1Sym05trnqty > 0 ? D1Sym05trnqty * D1Sym05o : D1Sym05trnqty * D1Sym05avgent
+    //}
+    //{ Update Sale Proceeds to perm variables. 
+    // Total Proceeds plus (if transacted quantity negative), minus transacted qty * open, Else (if transacted qty positive or zero) zero.
+    E1Sym01totpro     :=   E1Sym01totpro  + E1Sym01trnqty < 0 ? - E1Sym01trnqty * E1Sym01o : 0
+    E1Sym02totpro     :=   E1Sym02totpro  + E1Sym02trnqty < 0 ? - E1Sym02trnqty * E1Sym02o : 0
+    E1Sym03totpro     :=   E1Sym03totpro  + E1Sym03trnqty < 0 ? - E1Sym03trnqty * E1Sym03o : 0
+    E1Sym04totpro     :=   E1Sym04totpro  + E1Sym04trnqty < 0 ? - E1Sym04trnqty * E1Sym04o : 0
+    E1Sym05totpro     :=   E1Sym05totpro  + E1Sym05trnqty < 0 ? - E1Sym05trnqty * E1Sym05o : 0
+    E1Sym06totpro     :=   E1Sym06totpro  + E1Sym06trnqty < 0 ? - E1Sym06trnqty * E1Sym06o : 0
+    E1Sym07totpro     :=   E1Sym07totpro  + E1Sym07trnqty < 0 ? - E1Sym07trnqty * E1Sym07o : 0
+    E1Sym08totpro     :=   E1Sym08totpro  + E1Sym08trnqty < 0 ? - E1Sym08trnqty * E1Sym08o : 0
+    E1Sym09totpro     :=   E1Sym09totpro  + E1Sym09trnqty < 0 ? - E1Sym09trnqty * E1Sym09o : 0
+    E1Sym10totpro     :=   E1Sym10totpro  + E1Sym10trnqty < 0 ? - E1Sym10trnqty * E1Sym10o : 0
+    E2Sym01totpro     :=   E2Sym01totpro  + E2Sym01trnqty < 0 ? - E2Sym01trnqty * E2Sym01o : 0
+    E2Sym02totpro     :=   E2Sym02totpro  + E2Sym02trnqty < 0 ? - E2Sym02trnqty * E2Sym02o : 0
+    E2Sym03totpro     :=   E2Sym03totpro  + E2Sym03trnqty < 0 ? - E2Sym03trnqty * E2Sym03o : 0
+    E2Sym04totpro     :=   E2Sym04totpro  + E2Sym04trnqty < 0 ? - E2Sym04trnqty * E2Sym04o : 0
+    E2Sym05totpro     :=   E2Sym05totpro  + E2Sym05trnqty < 0 ? - E2Sym05trnqty * E2Sym05o : 0
+    I1Sym01totpro     :=   I1Sym01totpro  + I1Sym01trnqty < 0 ? - I1Sym01trnqty * I1Sym01o : 0
+    I1Sym02totpro     :=   I1Sym02totpro  + I1Sym02trnqty < 0 ? - I1Sym02trnqty * I1Sym02o : 0
+    I1Sym03totpro     :=   I1Sym03totpro  + I1Sym03trnqty < 0 ? - I1Sym03trnqty * I1Sym03o : 0
+    I1Sym04totpro     :=   I1Sym04totpro  + I1Sym04trnqty < 0 ? - I1Sym04trnqty * I1Sym04o : 0
+    I1Sym05totpro     :=   I1Sym05totpro  + I1Sym05trnqty < 0 ? - I1Sym05trnqty * I1Sym05o : 0
+    D1Sym01totpro     :=   D1Sym01totpro  + D1Sym01trnqty < 0 ? - D1Sym01trnqty * D1Sym01o : 0
+    D1Sym02totpro     :=   D1Sym02totpro  + D1Sym02trnqty < 0 ? - D1Sym02trnqty * D1Sym02o : 0
+    D1Sym03totpro     :=   D1Sym03totpro  + D1Sym03trnqty < 0 ? - D1Sym03trnqty * D1Sym03o : 0
+    D1Sym04totpro     :=   D1Sym04totpro  + D1Sym04trnqty < 0 ? - D1Sym04trnqty * D1Sym04o : 0
+    D1Sym05totpro     :=   D1Sym05totpro  + D1Sym05trnqty < 0 ? - D1Sym05trnqty * D1Sym05o : 0
+    //}
+    //{ Update Cost of Sales to perm variables.
+    //  Total Cost plus (if transaction quantity negative), minus transaction quantity * prior average entry price, Else (if transacted qty positive or zero) zero
+    E1Sym01totcst     :=  E1Sym01totcst + E1Sym01trnqty < 0 ? - E1Sym01trnqty * E1Sym01avgent : 0
+    E1Sym02totcst     :=  E1Sym02totcst + E1Sym02trnqty < 0 ? - E1Sym02trnqty * E1Sym02avgent : 0
+    E1Sym03totcst     :=  E1Sym03totcst + E1Sym03trnqty < 0 ? - E1Sym03trnqty * E1Sym03avgent : 0
+    E1Sym04totcst     :=  E1Sym04totcst + E1Sym04trnqty < 0 ? - E1Sym04trnqty * E1Sym04avgent : 0
+    E1Sym05totcst     :=  E1Sym05totcst + E1Sym05trnqty < 0 ? - E1Sym05trnqty * E1Sym05avgent : 0
+    E1Sym06totcst     :=  E1Sym06totcst + E1Sym06trnqty < 0 ? - E1Sym06trnqty * E1Sym06avgent : 0
+    E1Sym07totcst     :=  E1Sym07totcst + E1Sym07trnqty < 0 ? - E1Sym07trnqty * E1Sym07avgent : 0
+    E1Sym08totcst     :=  E1Sym08totcst + E1Sym08trnqty < 0 ? - E1Sym08trnqty * E1Sym08avgent : 0
+    E1Sym09totcst     :=  E1Sym09totcst + E1Sym09trnqty < 0 ? - E1Sym09trnqty * E1Sym09avgent : 0
+    E1Sym10totcst     :=  E1Sym10totcst + E1Sym10trnqty < 0 ? - E1Sym10trnqty * E1Sym10avgent : 0
+    E2Sym01totcst     :=  E2Sym01totcst + E2Sym01trnqty < 0 ? - E2Sym01trnqty * E2Sym01avgent : 0
+    E2Sym02totcst     :=  E2Sym02totcst + E2Sym02trnqty < 0 ? - E2Sym02trnqty * E2Sym02avgent : 0
+    E2Sym03totcst     :=  E2Sym03totcst + E2Sym03trnqty < 0 ? - E2Sym03trnqty * E2Sym03avgent : 0
+    E2Sym04totcst     :=  E2Sym04totcst + E2Sym04trnqty < 0 ? - E2Sym04trnqty * E2Sym04avgent : 0
+    E2Sym05totcst     :=  E2Sym05totcst + E2Sym05trnqty < 0 ? - E2Sym05trnqty * E2Sym05avgent : 0
+    I1Sym01totcst     :=  I1Sym01totcst + I1Sym01trnqty < 0 ? - I1Sym01trnqty * I1Sym01avgent : 0
+    I1Sym02totcst     :=  I1Sym02totcst + I1Sym02trnqty < 0 ? - I1Sym02trnqty * I1Sym02avgent : 0
+    I1Sym03totcst     :=  I1Sym03totcst + I1Sym03trnqty < 0 ? - I1Sym03trnqty * I1Sym03avgent : 0
+    I1Sym04totcst     :=  I1Sym04totcst + I1Sym04trnqty < 0 ? - I1Sym04trnqty * I1Sym04avgent : 0
+    I1Sym05totcst     :=  I1Sym05totcst + I1Sym05trnqty < 0 ? - I1Sym05trnqty * I1Sym05avgent : 0
+    D1Sym01totcst     :=  D1Sym01totcst + D1Sym01trnqty < 0 ? - D1Sym01trnqty * D1Sym01avgent : 0
+    D1Sym02totcst     :=  D1Sym02totcst + D1Sym02trnqty < 0 ? - D1Sym02trnqty * D1Sym02avgent : 0
+    D1Sym03totcst     :=  D1Sym03totcst + D1Sym03trnqty < 0 ? - D1Sym03trnqty * D1Sym03avgent : 0
+    D1Sym04totcst     :=  D1Sym04totcst + D1Sym04trnqty < 0 ? - D1Sym04trnqty * D1Sym04avgent : 0
+    D1Sym05totcst     :=  D1Sym05totcst + D1Sym05trnqty < 0 ? - D1Sym05trnqty * D1Sym05avgent : 0
+    //}
+    //{ Update Total Realized to perm variables. 
+    // Total Realized plus (if transacted qty negative, total Proceeds - total cost, Else (if transacted qty positive or zero) zero.
+    E1Sym01totrea     :=  E1Sym01totrea + E1Sym01trnqty < 0 ? E1Sym01totpro - E1Sym01totcst : 0
+    E1Sym02totrea     :=  E1Sym02totrea + E1Sym02trnqty < 0 ? E1Sym02totpro - E1Sym02totcst : 0
+    E1Sym03totrea     :=  E1Sym03totrea + E1Sym03trnqty < 0 ? E1Sym03totpro - E1Sym03totcst : 0
+    E1Sym04totrea     :=  E1Sym04totrea + E1Sym04trnqty < 0 ? E1Sym04totpro - E1Sym04totcst : 0
+    E1Sym05totrea     :=  E1Sym05totrea + E1Sym05trnqty < 0 ? E1Sym05totpro - E1Sym05totcst : 0
+    E1Sym06totrea     :=  E1Sym06totrea + E1Sym06trnqty < 0 ? E1Sym06totpro - E1Sym06totcst : 0
+    E1Sym07totrea     :=  E1Sym07totrea + E1Sym07trnqty < 0 ? E1Sym07totpro - E1Sym07totcst : 0
+    E1Sym08totrea     :=  E1Sym08totrea + E1Sym08trnqty < 0 ? E1Sym08totpro - E1Sym08totcst : 0
+    E1Sym09totrea     :=  E1Sym09totrea + E1Sym09trnqty < 0 ? E1Sym09totpro - E1Sym09totcst : 0
+    E1Sym10totrea     :=  E1Sym10totrea + E1Sym10trnqty < 0 ? E1Sym10totpro - E1Sym10totcst : 0
+    E2Sym01totrea     :=  E2Sym01totrea + E2Sym01trnqty < 0 ? E2Sym01totpro - E2Sym01totcst : 0
+    E2Sym02totrea     :=  E2Sym02totrea + E2Sym02trnqty < 0 ? E2Sym02totpro - E2Sym02totcst : 0
+    E2Sym03totrea     :=  E2Sym03totrea + E2Sym03trnqty < 0 ? E2Sym03totpro - E2Sym03totcst : 0
+    E2Sym04totrea     :=  E2Sym04totrea + E2Sym04trnqty < 0 ? E2Sym04totpro - E2Sym04totcst : 0
+    E2Sym05totrea     :=  E2Sym05totrea + E2Sym05trnqty < 0 ? E2Sym05totpro - E2Sym05totcst : 0
+    I1Sym01totrea     :=  I1Sym01totrea + I1Sym01trnqty < 0 ? I1Sym01totpro - I1Sym01totcst : 0
+    I1Sym02totrea     :=  I1Sym02totrea + I1Sym02trnqty < 0 ? I1Sym02totpro - I1Sym02totcst : 0
+    I1Sym03totrea     :=  I1Sym03totrea + I1Sym03trnqty < 0 ? I1Sym03totpro - I1Sym03totcst : 0
+    I1Sym04totrea     :=  I1Sym04totrea + I1Sym04trnqty < 0 ? I1Sym04totpro - I1Sym04totcst : 0
+    I1Sym05totrea     :=  I1Sym05totrea + I1Sym05trnqty < 0 ? I1Sym05totpro - I1Sym05totcst : 0
+    D1Sym01totrea     :=  D1Sym01totrea + D1Sym01trnqty < 0 ? D1Sym01totpro - D1Sym01totcst : 0
+    D1Sym02totrea     :=  D1Sym02totrea + D1Sym02trnqty < 0 ? D1Sym02totpro - D1Sym02totcst : 0
+    D1Sym03totrea     :=  D1Sym03totrea + D1Sym03trnqty < 0 ? D1Sym03totpro - D1Sym03totcst : 0
+    D1Sym04totrea     :=  D1Sym04totrea + D1Sym04trnqty < 0 ? D1Sym04totpro - D1Sym04totcst : 0
+    D1Sym05totrea     :=  D1Sym05totrea + D1Sym05trnqty < 0 ? D1Sym05totpro - D1Sym05totcst : 0
+    //}
+    //{ Update Unrealized to perm variables.
+    E1Sym01totunr     :=  E1Sym01totunr + E1Sym01cumqty * E1Sym01c[1] - E1Sym01totinv 
+    E1Sym02totunr     :=  E1Sym02totunr + E1Sym02cumqty * E1Sym02c[1] - E1Sym02totinv
+    E1Sym03totunr     :=  E1Sym03totunr + E1Sym03cumqty * E1Sym03c[1] - E1Sym03totinv
+    E1Sym04totunr     :=  E1Sym04totunr + E1Sym04cumqty * E1Sym04c[1] - E1Sym04totinv
+    E1Sym05totunr     :=  E1Sym05totunr + E1Sym05cumqty * E1Sym05c[1] - E1Sym05totinv
+    E1Sym06totunr     :=  E1Sym06totunr + E1Sym06cumqty * E1Sym06c[1] - E1Sym06totinv
+    E1Sym07totunr     :=  E1Sym07totunr + E1Sym07cumqty * E1Sym07c[1] - E1Sym07totinv
+    E1Sym08totunr     :=  E1Sym08totunr + E1Sym08cumqty * E1Sym08c[1] - E1Sym08totinv
+    E1Sym09totunr     :=  E1Sym09totunr + E1Sym09cumqty * E1Sym09c[1] - E1Sym09totinv
+    E1Sym10totunr     :=  E1Sym10totunr + E1Sym10cumqty * E1Sym10c[1] - E1Sym10totinv
+    E2Sym01totunr     :=  E2Sym01totunr + E2Sym01cumqty * E2Sym01c[1] - E2Sym01totinv
+    E2Sym02totunr     :=  E2Sym02totunr + E2Sym02cumqty * E2Sym02c[1] - E2Sym02totinv
+    E2Sym03totunr     :=  E2Sym03totunr + E2Sym03cumqty * E2Sym03c[1] - E2Sym03totinv
+    E2Sym04totunr     :=  E2Sym04totunr + E2Sym04cumqty * E2Sym04c[1] - E2Sym04totinv
+    E2Sym05totunr     :=  E2Sym05totunr + E2Sym05cumqty * E2Sym05c[1] - E2Sym05totinv
+    I1Sym01totunr     :=  I1Sym01totunr + I1Sym01cumqty * I1Sym01c[1] - I1Sym01totinv
+    I1Sym02totunr     :=  I1Sym02totunr + I1Sym02cumqty * I1Sym02c[1] - I1Sym02totinv
+    I1Sym03totunr     :=  I1Sym03totunr + I1Sym03cumqty * I1Sym03c[1] - I1Sym03totinv
+    I1Sym04totunr     :=  I1Sym04totunr + I1Sym04cumqty * I1Sym04c[1] - I1Sym04totinv
+    I1Sym05totunr     :=  I1Sym05totunr + I1Sym05cumqty * I1Sym05c[1] - I1Sym05totinv
+    D1Sym01totunr     :=  D1Sym01totunr + D1Sym01cumqty * D1Sym01c[1] - D1Sym01totinv
+    D1Sym02totunr     :=  D1Sym02totunr + D1Sym02cumqty * D1Sym02c[1] - D1Sym02totinv
+    D1Sym03totunr     :=  D1Sym03totunr + D1Sym03cumqty * D1Sym03c[1] - D1Sym03totinv
+    D1Sym04totunr     :=  D1Sym04totunr + D1Sym04cumqty * D1Sym04c[1] - D1Sym04totinv
+    D1Sym05totunr     :=  D1Sym05totunr + D1Sym05cumqty * D1Sym05c[1] - D1Sym05totinv
+    //}
+    //{ Update Average Entry Prices to perm variables.. 
+    E1Sym01avgent     :=   E1Sym01totinv / E1Sym01cumqty 
+    E1Sym02avgent     :=   E1Sym02totinv / E1Sym02cumqty 
+    E1Sym03avgent     :=   E1Sym03totinv / E1Sym03cumqty 
+    E1Sym04avgent     :=   E1Sym04totinv / E1Sym04cumqty 
+    E1Sym05avgent     :=   E1Sym05totinv / E1Sym05cumqty 
+    E1Sym06avgent     :=   E1Sym06totinv / E1Sym06cumqty 
+    E1Sym07avgent     :=   E1Sym07totinv / E1Sym07cumqty 
+    E1Sym08avgent     :=   E1Sym08totinv / E1Sym08cumqty 
+    E1Sym09avgent     :=   E1Sym09totinv / E1Sym09cumqty 
+    E1Sym10avgent     :=   E1Sym10totinv / E1Sym10cumqty 
+    E2Sym01avgent     :=   E2Sym01totinv / E2Sym01cumqty 
+    E2Sym02avgent     :=   E2Sym02totinv / E2Sym02cumqty 
+    E2Sym03avgent     :=   E2Sym03totinv / E2Sym03cumqty 
+    E2Sym04avgent     :=   E2Sym04totinv / E2Sym04cumqty 
+    E2Sym05avgent     :=   E2Sym05totinv / E2Sym05cumqty 
+    I1Sym01avgent     :=   I1Sym01totinv / I1Sym01cumqty 
+    I1Sym02avgent     :=   I1Sym02totinv / I1Sym02cumqty 
+    I1Sym03avgent     :=   I1Sym03totinv / I1Sym03cumqty 
+    I1Sym04avgent     :=   I1Sym04totinv / I1Sym04cumqty 
+    I1Sym05avgent     :=   I1Sym05totinv / I1Sym05cumqty 
+    D1Sym01avgent     :=   D1Sym01totinv / D1Sym01cumqty 
+    D1Sym02avgent     :=   D1Sym02totinv / D1Sym02cumqty 
+    D1Sym03avgent     :=   D1Sym03totinv / D1Sym03cumqty 
+    D1Sym04avgent     :=   D1Sym04totinv / D1Sym04cumqty 
+    D1Sym05avgent     :=   D1Sym05totinv / D1Sym05cumqty 
+    //}
+    //{ Update Total Total Invested to perm variable.
+    //  Sum totinv for symbols
+    TotalInvested   :=   E1Sym01totinv +
+                         E1Sym02totinv +
+                         E1Sym03totinv +
+                         E1Sym04totinv +
+                         E1Sym05totinv +
+                         E1Sym06totinv +
+                         E1Sym07totinv +
+                         E1Sym08totinv +
+                         E1Sym09totinv +
+                         E1Sym10totinv +
+                         E2Sym01totinv +
+                         E2Sym02totinv +
+                         E2Sym03totinv +
+                         E2Sym04totinv +
+                         E2Sym05totinv +
+                         I1Sym01totinv +
+                         I1Sym02totinv +
+                         I1Sym03totinv +
+                         I1Sym04totinv +
+                         I1Sym05totinv +
+                         D1Sym01totinv +
+                         D1Sym02totinv +
+                         D1Sym03totinv +
+                         D1Sym04totinv +
+                         D1Sym05totinv 
+    //}
+    //{ Update Total Total Proceeds to perm variable.
+    //  Sum of totpro for symbols
+    TotalProceeds   :=   E1Sym01totpro +
+                         E1Sym02totpro +
+                         E1Sym03totpro +
+                         E1Sym04totpro +
+                         E1Sym05totpro +
+                         E1Sym06totpro +
+                         E1Sym07totpro +
+                         E1Sym08totpro +
+                         E1Sym09totpro +
+                         E1Sym10totpro +
+                         E2Sym01totpro +
+                         E2Sym02totpro +
+                         E2Sym03totpro +
+                         E2Sym04totpro +
+                         E2Sym05totpro +
+                         I1Sym01totpro +
+                         I1Sym02totpro +
+                         I1Sym03totpro +
+                         I1Sym04totpro +
+                         I1Sym05totpro +
+                         D1Sym01totpro +
+                         D1Sym02totpro +
+                         D1Sym03totpro +
+                         D1Sym04totpro +
+                         D1Sym05totpro 
+    //}
+    //{ Update Total Total Cost to perm variable.
+    //  Sum of totcst for symbols
+    TotalCost   :=       E1Sym01totpro +
+                         E1Sym02totcst +
+                         E1Sym03totcst +
+                         E1Sym04totcst +
+                         E1Sym05totcst +
+                         E1Sym06totcst +
+                         E1Sym07totcst +
+                         E1Sym08totcst +
+                         E1Sym09totcst +
+                         E1Sym10totcst +
+                         E2Sym01totcst +
+                         E2Sym02totcst +
+                         E2Sym03totcst +
+                         E2Sym04totcst +
+                         E2Sym05totcst +
+                         I1Sym01totcst +
+                         I1Sym02totcst +
+                         I1Sym03totcst +
+                         I1Sym04totcst +
+                         I1Sym05totcst +
+                         D1Sym01totcst +
+                         D1Sym02totcst +
+                         D1Sym03totcst +
+                         D1Sym04totcst +
+                         D1Sym05totcst 
+    //}
+    //{ Update Total Holdings to perm variable.
+    //  Sum of (cumulative qty * open)
+    TotalHoldings   :=   E1Sym01cumqty * E1Sym01o +
+                         E1Sym02cumqty * E1Sym02o +
+                         E1Sym03cumqty * E1Sym03o +
+                         E1Sym04cumqty * E1Sym04o +
+                         E1Sym05cumqty * E1Sym05o +
+                         E1Sym06cumqty * E1Sym06o +
+                         E1Sym07cumqty * E1Sym07o +
+                         E1Sym08cumqty * E1Sym08o +
+                         E1Sym09cumqty * E1Sym09o +
+                         E1Sym10cumqty * E1Sym10o +
+                         E2Sym01cumqty * E2Sym01o +
+                         E2Sym02cumqty * E2Sym02o +
+                         E2Sym03cumqty * E2Sym03o +
+                         E2Sym04cumqty * E2Sym04o +
+                         E2Sym05cumqty * E2Sym05o +
+                         I1Sym01cumqty * I1Sym01o +
+                         I1Sym02cumqty * I1Sym02o +
+                         I1Sym03cumqty * I1Sym03o +
+                         I1Sym04cumqty * I1Sym04o +
+                         I1Sym05cumqty * I1Sym05o +
+                         D1Sym01cumqty * D1Sym01o +
+                         D1Sym02cumqty * D1Sym02o +
+                         D1Sym03cumqty * D1Sym03o +
+                         D1Sym04cumqty * D1Sym04o +
+                         D1Sym05cumqty * D1Sym05o 
+    //}
+    //{ Update Return variables
+    Cash            := i_InitialCapital - TotalInvested + TotalProceeds
+    TotalEquity     := Cash + TotalHoldings
+    TotalRealized   := TotalProceeds - TotalCost
+    TotalUnRealized := TotalHoldings - TotalInvested
+    TotalReturn     := (TotalRealized + TotalUnRealized) / TotalEquity
+    //}
+//{ Print the table
+if barstate.islast
+    var tblSum = table.new(position = position.bottom_right, columns = 8, rows = 26, bgcolor = color.black, border_width = 1)
+    bgdcolor = color.black
+    txtcolor = color.white
+    //}
+    //{ Column Headers
+    table.cell(tblSum, 0, 0, "Sym", text_color = txtcolor)
+    table.cell(tblSum, 1, 0, "Inv", text_color = txtcolor)
+    table.cell(tblSum, 2, 0, "Pro", text_color = txtcolor)
+    table.cell(tblSum, 3, 0, "Cst", text_color = txtcolor)
+    table.cell(tblSum, 4, 0, "Rea", text_color = txtcolor)
+    table.cell(tblSum, 5, 0, "Unr", text_color = txtcolor)
+    table.cell(tblSum, 6, 0, "Tot", text_color = txtcolor)
+    table.cell(tblSum, 7, 0, "Ret", text_color = txtcolor)
+    //}
+    //{ Symbols
+    table.cell(tblSum, 0,  1, str.tostring(i_E1Sym01txt), text_color = txtcolor)
+    table.cell(tblSum, 0,  2, str.tostring(i_E1Sym02txt), text_color = txtcolor)
+    table.cell(tblSum, 0,  3, str.tostring(i_E1Sym03txt), text_color = txtcolor)
+    table.cell(tblSum, 0,  4, str.tostring(i_E1Sym04txt), text_color = txtcolor)
+    table.cell(tblSum, 0,  5, str.tostring(i_E1Sym05txt), text_color = txtcolor)
+    table.cell(tblSum, 0,  6, str.tostring(i_E1Sym06txt), text_color = txtcolor)
+    table.cell(tblSum, 0,  7, str.tostring(i_E1Sym07txt), text_color = txtcolor)
+    table.cell(tblSum, 0,  8, str.tostring(i_E1Sym08txt), text_color = txtcolor)
+    table.cell(tblSum, 0,  9, str.tostring(i_E1Sym09txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 10, str.tostring(i_E1Sym10txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 11, str.tostring(i_E2Sym01txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 12, str.tostring(i_E2Sym02txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 13, str.tostring(i_E2Sym03txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 14, str.tostring(i_E2Sym04txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 15, str.tostring(i_E2Sym05txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 16, str.tostring(i_I1Sym01txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 17, str.tostring(i_I1Sym02txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 18, str.tostring(i_I1Sym03txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 19, str.tostring(i_I1Sym04txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 20, str.tostring(i_I1Sym05txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 21, str.tostring(i_D1Sym01txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 22, str.tostring(i_D1Sym02txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 23, str.tostring(i_D1Sym03txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 24, str.tostring(i_D1Sym04txt), text_color = txtcolor)
+    table.cell(tblSum, 0, 25, str.tostring(i_D1Sym05txt), text_color = txtcolor)
+    //}
+    //{ Total Investment
+    table.cell(tblSum, 2,  1, str.tostring(math.round(E1Sym01totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2,  2, str.tostring(math.round(E1Sym02totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2,  3, str.tostring(math.round(E1Sym03totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2,  4, str.tostring(math.round(E1Sym04totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2,  5, str.tostring(math.round(E1Sym05totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2,  6, str.tostring(math.round(E1Sym06totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2,  7, str.tostring(math.round(E1Sym07totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2,  8, str.tostring(math.round(E1Sym08totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2,  9, str.tostring(math.round(E1Sym09totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 10, str.tostring(math.round(E1Sym10totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 11, str.tostring(math.round(E2Sym01totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 12, str.tostring(math.round(E2Sym02totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 13, str.tostring(math.round(E2Sym03totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 14, str.tostring(math.round(E2Sym04totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 15, str.tostring(math.round(E2Sym05totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 16, str.tostring(math.round(I1Sym01totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 17, str.tostring(math.round(I1Sym02totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 18, str.tostring(math.round(I1Sym03totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 19, str.tostring(math.round(I1Sym04totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 20, str.tostring(math.round(I1Sym05totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 21, str.tostring(math.round(D1Sym01totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 22, str.tostring(math.round(D1Sym02totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 23, str.tostring(math.round(D1Sym03totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 24, str.tostring(math.round(D1Sym04totinv, 2)), text_color = txtcolor)
+    table.cell(tblSum, 2, 25, str.tostring(math.round(D1Sym05totinv, 2)), text_color = txtcolor)
+    //}
+    //{ Total Proceeds
+    table.cell(tblSum, 3,  1, str.tostring(math.round(E1Sym01totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3,  2, str.tostring(math.round(E1Sym02totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3,  3, str.tostring(math.round(E1Sym03totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3,  4, str.tostring(math.round(E1Sym04totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3,  5, str.tostring(math.round(E1Sym05totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3,  6, str.tostring(math.round(E1Sym06totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3,  7, str.tostring(math.round(E1Sym07totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3,  8, str.tostring(math.round(E1Sym08totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3,  9, str.tostring(math.round(E1Sym09totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 10, str.tostring(math.round(E1Sym10totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 11, str.tostring(math.round(E2Sym01totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 12, str.tostring(math.round(E2Sym02totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 13, str.tostring(math.round(E2Sym03totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 14, str.tostring(math.round(E2Sym04totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 15, str.tostring(math.round(E2Sym05totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 16, str.tostring(math.round(I1Sym01totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 17, str.tostring(math.round(I1Sym02totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 18, str.tostring(math.round(I1Sym03totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 19, str.tostring(math.round(I1Sym04totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 20, str.tostring(math.round(I1Sym05totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 21, str.tostring(math.round(D1Sym01totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 22, str.tostring(math.round(D1Sym02totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 23, str.tostring(math.round(D1Sym03totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 24, str.tostring(math.round(D1Sym04totpro, 0)), text_color = txtcolor)
+    table.cell(tblSum, 3, 25, str.tostring(math.round(D1Sym05totpro, 0)), text_color = txtcolor)
+    //}
+    //{ Total Cost
+    table.cell(tblSum, 4,  1, str.tostring(math.round(E1Sym01totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4,  2, str.tostring(math.round(E1Sym02totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4,  3, str.tostring(math.round(E1Sym03totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4,  4, str.tostring(math.round(E1Sym04totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4,  5, str.tostring(math.round(E1Sym05totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4,  6, str.tostring(math.round(E1Sym06totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4,  7, str.tostring(math.round(E1Sym07totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4,  8, str.tostring(math.round(E1Sym08totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4,  9, str.tostring(math.round(E1Sym09totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 10, str.tostring(math.round(E1Sym10totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 11, str.tostring(math.round(E2Sym01totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 12, str.tostring(math.round(E2Sym02totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 13, str.tostring(math.round(E2Sym03totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 14, str.tostring(math.round(E2Sym04totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 15, str.tostring(math.round(E2Sym05totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 16, str.tostring(math.round(I1Sym01totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 17, str.tostring(math.round(I1Sym02totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 18, str.tostring(math.round(I1Sym03totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 19, str.tostring(math.round(I1Sym04totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 20, str.tostring(math.round(I1Sym05totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 21, str.tostring(math.round(D1Sym01totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 22, str.tostring(math.round(D1Sym02totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 23, str.tostring(math.round(D1Sym03totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 24, str.tostring(math.round(D1Sym04totcst, 0)), text_color = txtcolor)
+    table.cell(tblSum, 4, 25, str.tostring(math.round(D1Sym05totcst, 0)), text_color = txtcolor)
+    //}
+    //{ Total Realized
+    table.cell(tblSum, 5,  1, str.tostring(math.round(E1Sym01totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5,  2, str.tostring(math.round(E1Sym02totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5,  3, str.tostring(math.round(E1Sym03totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5,  4, str.tostring(math.round(E1Sym04totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5,  5, str.tostring(math.round(E1Sym05totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5,  6, str.tostring(math.round(E1Sym06totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5,  7, str.tostring(math.round(E1Sym07totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5,  8, str.tostring(math.round(E1Sym08totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5,  9, str.tostring(math.round(E1Sym09totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 10, str.tostring(math.round(E1Sym10totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 11, str.tostring(math.round(E2Sym01totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 12, str.tostring(math.round(E2Sym02totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 13, str.tostring(math.round(E2Sym03totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 14, str.tostring(math.round(E2Sym04totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 15, str.tostring(math.round(E2Sym05totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 16, str.tostring(math.round(I1Sym01totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 17, str.tostring(math.round(I1Sym02totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 18, str.tostring(math.round(I1Sym03totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 19, str.tostring(math.round(I1Sym04totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 20, str.tostring(math.round(I1Sym05totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 21, str.tostring(math.round(D1Sym01totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 22, str.tostring(math.round(D1Sym02totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 23, str.tostring(math.round(D1Sym03totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 24, str.tostring(math.round(D1Sym04totrea, 0)), text_color = txtcolor)
+    table.cell(tblSum, 5, 25, str.tostring(math.round(D1Sym05totrea, 0)), text_color = txtcolor)
+    //}
+    //{ Total Realized Return
+    table.cell(tblSum, 6,  1, str.tostring(math.round(E1Sym01totrea / E1Sym01totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6,  2, str.tostring(math.round(E1Sym02totrea / E1Sym02totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6,  3, str.tostring(math.round(E1Sym03totrea / E1Sym03totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6,  4, str.tostring(math.round(E1Sym04totrea / E1Sym04totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6,  5, str.tostring(math.round(E1Sym05totrea / E1Sym05totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6,  6, str.tostring(math.round(E1Sym06totrea / E1Sym06totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6,  7, str.tostring(math.round(E1Sym07totrea / E1Sym07totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6,  8, str.tostring(math.round(E1Sym08totrea / E1Sym08totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6,  9, str.tostring(math.round(E1Sym09totrea / E1Sym09totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 10, str.tostring(math.round(E1Sym10totrea / E1Sym10totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 11, str.tostring(math.round(E2Sym01totrea / E2Sym01totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 12, str.tostring(math.round(E2Sym02totrea / E2Sym02totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 13, str.tostring(math.round(E2Sym03totrea / E2Sym03totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 14, str.tostring(math.round(E2Sym04totrea / E2Sym04totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 15, str.tostring(math.round(E2Sym05totrea / E2Sym05totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 16, str.tostring(math.round(I1Sym01totrea / I1Sym01totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 17, str.tostring(math.round(I1Sym02totrea / I1Sym02totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 18, str.tostring(math.round(I1Sym03totrea / I1Sym03totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 19, str.tostring(math.round(I1Sym04totrea / I1Sym04totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 20, str.tostring(math.round(I1Sym05totrea / I1Sym05totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 21, str.tostring(math.round(D1Sym01totrea / D1Sym01totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 22, str.tostring(math.round(D1Sym02totrea / D1Sym02totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 23, str.tostring(math.round(D1Sym03totrea / D1Sym03totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 24, str.tostring(math.round(D1Sym04totrea / D1Sym04totcst, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 6, 25, str.tostring(math.round(D1Sym05totrea / D1Sym05totcst, 2) * 100) + "%", text_color = txtcolor)
+    //}
+    //{ Total Unrealized Return
+    table.cell(tblSum, 7,  1, str.tostring(math.round(E1Sym01totunr / E1Sym01totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7,  2, str.tostring(math.round(E1Sym02totunr / E1Sym02totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7,  3, str.tostring(math.round(E1Sym03totunr / E1Sym03totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7,  4, str.tostring(math.round(E1Sym04totunr / E1Sym04totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7,  5, str.tostring(math.round(E1Sym05totunr / E1Sym05totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7,  6, str.tostring(math.round(E1Sym06totunr / E1Sym06totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7,  7, str.tostring(math.round(E1Sym07totunr / E1Sym07totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7,  8, str.tostring(math.round(E1Sym08totunr / E1Sym08totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7,  9, str.tostring(math.round(E1Sym09totunr / E1Sym09totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 10, str.tostring(math.round(E1Sym10totunr / E1Sym10totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 11, str.tostring(math.round(E2Sym01totunr / E2Sym01totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 12, str.tostring(math.round(E2Sym02totunr / E2Sym02totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 13, str.tostring(math.round(E2Sym03totunr / E2Sym03totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 14, str.tostring(math.round(E2Sym04totunr / E2Sym04totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 15, str.tostring(math.round(E2Sym05totunr / E2Sym05totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 16, str.tostring(math.round(I1Sym01totunr / I1Sym01totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 17, str.tostring(math.round(I1Sym02totunr / I1Sym02totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 18, str.tostring(math.round(I1Sym03totunr / I1Sym03totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 19, str.tostring(math.round(I1Sym04totunr / I1Sym04totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 20, str.tostring(math.round(I1Sym05totunr / I1Sym05totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 21, str.tostring(math.round(D1Sym01totunr / D1Sym01totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 22, str.tostring(math.round(D1Sym02totunr / D1Sym02totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 23, str.tostring(math.round(D1Sym03totunr / D1Sym03totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 24, str.tostring(math.round(D1Sym04totunr / D1Sym04totinv, 2) * 100) + "%", text_color = txtcolor)
+    table.cell(tblSum, 7, 25, str.tostring(math.round(D1Sym05totunr / D1Sym05totinv, 2) * 100) + "%", text_color = txtcolor)
+    //}
